@@ -1,0 +1,99 @@
+# Builds HC Releases from the private source repo and publishes it here.
+# Run from the Actions tab (or `gh workflow run release.yml -R gustavomts/hc-releases-desktop-dist
+# -f ref=v0.1.0`). Only collaborators can dispatch it, so forks never see the secrets.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Source tag or commit to build (e.g. v0.1.0); the version comes from its tauri.conf.json
+        required: true
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          # 22.04: older glibc, so the AppImage runs on more distros.
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: gustavomts/hc-releases-desktop
+          ref: ${{ inputs.ref }}
+          ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          path: app
+
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libdbus-1-dev pkg-config
+
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          package_json_file: app/package.json
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: app/src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: app
+
+      - uses: tauri-apps/tauri-action@action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tagName: v__VERSION__
+          releaseName: HC Releases v__VERSION__
+          releaseBody: See the README for install steps.
+          # Draft until every platform is in; installed apps only see published releases.
+          releaseDraft: true
+          uploadUpdaterJson: true
+          args: ${{ matrix.args }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check latest.json covers every platform, then publish
+        run: |
+          tag=$(gh release list --json tagName,isDraft,createdAt -q '[.[] | select(.isDraft)] | sort_by(.createdAt) | last | .tagName')
+          test -n "$tag" || { echo "no draft release found"; exit 1; }
+          gh release download "$tag" --pattern latest.json --dir /tmp/rel
+          for p in darwin-aarch64 darwin-x86_64 linux-x86_64 windows-x86_64; do
+            jq -e --arg p "$p" '.platforms[$p].url and .platforms[$p].signature' /tmp/rel/latest.json >/dev/null \
+              || { echo "latest.json is missing $p"; exit 1; }
+          done
+          gh release edit "$tag" --draft=false --latest
+          echo "Published $tag"
