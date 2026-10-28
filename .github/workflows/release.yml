@@ -30,7 +30,7 @@ jobs:
         with:
           repository: HeavyConnected/HC-Utils-Desktop
           ref: ${{ inputs.ref }}
-          ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          token: ${{ secrets.SOURCE_TOKEN }}
           path: app
           sparse-checkout: src-tauri/tauri.conf.json
           sparse-checkout-cone-mode: false
@@ -61,7 +61,7 @@ jobs:
         with:
           repository: HeavyConnected/HC-Utils-Desktop
           ref: ${{ inputs.ref }}
-          ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          token: ${{ secrets.SOURCE_TOKEN }}
           path: app
 
       - name: Linux system libraries
