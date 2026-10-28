@@ -1,4 +1,4 @@
-# Builds HC Releases from the private source repo and publishes it here.
+# Builds HC Releases from the private source repo (HeavyConnected/HC-Utils-Desktop) and publishes it here.
 # Run from the Actions tab (or `gh workflow run release.yml -R gustavomts/hc-releases-desktop-dist
 # -f ref=v0.1.0`). Only collaborators can dispatch it, so forks never see the secrets.
 name: Release
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          repository: gustavomts/hc-releases-desktop
+          repository: HeavyConnected/HC-Utils-Desktop
           ref: ${{ inputs.ref }}
           ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
           path: app
@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          repository: gustavomts/hc-releases-desktop
+          repository: HeavyConnected/HC-Utils-Desktop
           ref: ${{ inputs.ref }}
           ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
           path: app
